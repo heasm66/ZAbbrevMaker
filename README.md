@@ -33,4 +33,5 @@ Precompiled binaries for linux-arm, linux-x64, osx-x64, win-x86, win-x64 & win-a
 ## References
 https://intfiction.org/t/highly-optimized-abbreviations-computed-efficiently/48753  
 https://gitlab.com/russotto/zilabbrs  
-https://github.com/hlabrand/retro-scripts
+https://github.com/hlabrand/retro-scripts  
+https://www.nuget.org/packages/MoreComplexDataStructures/
