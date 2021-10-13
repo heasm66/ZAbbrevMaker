@@ -1,5 +1,5 @@
 
-'Copyright (C) 2021 Henrik Ã…sman
+'Copyright (C) 2021 Henrik Åsman
 'You can redistribute and/or modify this file under the terms of the
 'GNU General Public License as published by the Free Software
 'Foundation, either version 3 of the License, or (at your option) any
@@ -21,6 +21,8 @@ Module Program
     Public Const LF_REPLACEMENT As Char = "|"
 
     Private Property numberOfAbbrevs As Integer = NUMBER_OF_ABBREVIATIONS
+
+    Private Property textEncoding As System.Text.Encoding = Nothing
 
     Sub Main(args As String())
         Dim forceRoundingTo3 As Boolean = False
@@ -69,7 +71,7 @@ Module Program
                         i += 1
                     End If
                 Case "-h", "--help", "\?"
-                    Console.Error.WriteLine("ZAbbrevMaker 0.3")
+                    Console.Error.WriteLine("ZAbbrevMaker 0.4")
                     Console.Error.WriteLine("ZAbbrevMaker [switches] [path-to-game]")
                     Console.Error.WriteLine()
                     Console.Error.WriteLine(" -n nn        # of abbreviations to generate (default = 96).")
@@ -88,6 +90,9 @@ Module Program
                     Console.Error.WriteLine("              to 6 is used for strings stored in high memory for z4+ games.")
                     Console.Error.WriteLine(" -b           Throw all abbreviations that have lower score than last pick back on heap.")
                     Console.Error.WriteLine("              (This only occasionally improves the result, use sparingly.)")
+                    Console.Error.WriteLine(" -c0          Text character set is plain ASCII only.")
+                    Console.Error.WriteLine(" -cu          Text character set is UTF-8.")
+                    Console.Error.WriteLine(" -c1          Text character set is ISO 8859-1 (Latin1, ANSI).")
                     Console.Error.WriteLine(" -v           Verbose. Prints progress and intermediate results.")
                     Console.Error.WriteLine(" path-to-game Use this path. If omitted the current path is used.")
                     Console.Error.WriteLine()
@@ -96,6 +101,12 @@ Module Program
                     Exit Sub
                 Case "-i"
                     inform6StyleText = True
+                Case "-c0"
+                    textEncoding = System.Text.Encoding.ASCII
+                Case "-cu"
+                    textEncoding = System.Text.Encoding.UTF8
+                Case "-c1"
+                    textEncoding = System.Text.Encoding.Latin1
                 Case Else
                     If IO.Directory.Exists(args(i)) Then
                         gameDirectory = args(i)
@@ -137,390 +148,431 @@ Module Program
                                        ForceRoundingTo6 As Boolean,
                                        throwBackLowscorers As Boolean,
                                        printDebug As Boolean)
-        Dim searchFor34 As Boolean = False
-        Dim searchForCR As Boolean = False
-        Dim gameTextList As List(Of gameText) = New List(Of gameText)
-        Dim patternDictionary As New Dictionary(Of String, patternData)
-        Dim candidateThreshold As Integer = LOW_SCORE_CUTOFF
-        Dim lowscoreCutoff As Integer = LOW_SCORE_CUTOFF
-        Dim totalSavings As Integer = 0
-        Dim zversion As Integer = 3
-        Dim gameFilename As String = ""
-        Dim packedAddress As Boolean = False
+        Try
+            Console.Error.WriteLine("ZAbbrevMaker 0.4")
 
-        Dim totalStartTime As Date = Date.Now
+            If Not IO.Directory.Exists(gameDirectory) Then
+                Console.Error.WriteLine("ERROR: Can't find specified directory.")
+                Exit Sub
+            End If
 
-        Dim startTime As Date = Date.Now
-        Console.Error.Write("Indexing files...")
+            Dim searchFor34 As Boolean = False
+            Dim searchForCR As Boolean = False
+            Dim gameTextList As List(Of gameText) = New List(Of gameText)
+            Dim patternDictionary As New Dictionary(Of String, patternData)
+            Dim candidateThreshold As Integer = LOW_SCORE_CUTOFF
+            Dim lowscoreCutoff As Integer = LOW_SCORE_CUTOFF
+            Dim totalSavings As Integer = 0
+            Dim zversion As Integer = 3
+            Dim gameFilename As String = ""
+            Dim packedAddress As Boolean = False
 
-        If inform6StyleText Then
-            ' Inform6 text are in "gametext.txt". 
-            ' "gametext.txt" is produced by: inform6.exe -r $TRANSCRIPT_FORMAT=1 <gamefile>.inf
-            ' Each line is coded
-            '   I:info
-            '   G:game text
-            '   V:veneer text
-            '   L:lowmem string
-            '   A:abbreviation
-            '   D:dict word
-            '   O:object name
-            '   S:symbol
-            '   X:infix
-            ' Only text on lines GVLO should be indexed.
-            ' ^ means CR and ~ means ".
-            ' Candidate strings that contains a @ should not be considered.
-            If IO.File.Exists(gameDirectory & "\gametext.txt") Then
-                Dim reader As New IO.StreamReader(gameDirectory & "\gametext.txt", System.Text.Encoding.ASCII)
-                Dim line As String
+            Dim totalStartTime As Date = Date.Now
 
-                Do
-                    line = reader.ReadLine
+            Dim startTime As Date = Date.Now
+            Console.Error.Write("Indexing files...")
 
-                    If line IsNot Nothing Then
-                        If "GVLO".Contains(line.Substring(0, 1)) Then
-                            ' Replace ^, ~ and space
-                            line = line.Replace("^", LF_REPLACEMENT)
-                            line = line.Replace("~", QUOTE_REPLACEMENT)
-                            line = line.Replace(" ", SPACE_REPLACEMENT)
+            If inform6StyleText Then
+                ' Inform6 text are in "gametext.txt". 
+                ' "gametext.txt" is produced by: inform6.exe -r $TRANSCRIPT_FORMAT=1 <gamefile>.inf
+                ' Each line is coded
+                '   I:info
+                '   G:game text
+                '   V:veneer text
+                '   L:lowmem string
+                '   A:abbreviation
+                '   D:dict word
+                '   O:object name
+                '   S:symbol
+                '   X:infix
+                ' Only text on lines GVLO should be indexed.
+                ' ^ means CR and ~ means ".
+                ' Candidate strings that contains a @ should not be considered.
+                If IO.File.Exists(IO.Path.Combine(gameDirectory, "gametext.txt")) Then
 
-                            ' Doesn't work yet for Inform6
-                            packedAddress = False
-
-                            Dim gameTextLine As New gameText(line.Substring(3))
-                            gameTextLine.packedAddress = packedAddress
-                            gameTextList.Add(gameTextLine)
-                            For Each sKey In ExtractUniquePhrases(gameTextLine.text, 2, maxAbbreviationLen)
-                                If Not sKey.Contains("@") Then
-                                    If Not patternDictionary.ContainsKey(sKey) Then
-                                        patternDictionary(sKey) = New patternData
-                                        patternDictionary(sKey).Cost = CalculateCost(sKey)
-                                    End If
-                                    patternDictionary(sKey).Frequency += CountOccurrencesReplace(gameTextLine.text, sKey)
-                                    patternDictionary(sKey).Key = sKey
-                                End If
-                            Next
-
+                    If textEncoding Is Nothing Then
+                        'Try to autodetect encoding
+                        If IsFileUTF8(IO.Path.Combine(gameDirectory, "gametext.txt")) Then
+                            textEncoding = System.Text.Encoding.UTF8
+                        Else
+                            textEncoding = System.Text.Encoding.Latin1
                         End If
                     End If
-                Loop Until line Is Nothing
 
-                reader.Close()
-            End If
-        Else
-            ' Get text from zap-files and store every line in a list of strings.
-            ' The ".GSTR", ".STRL", "PRINTI" and "PRINTR" Op-codes contains the text.
-            ' Every pattern is stored in a dictionary with the pattern as key.
-            For Each fileName As String In IO.Directory.GetFiles(gameDirectory)
-                Dim startPos As Long = 0
+                    Dim reader As New IO.StreamReader(IO.Path.Combine(gameDirectory, "gametext.txt"), textEncoding)
+                    Dim line As String
 
-                If IO.Path.GetExtension(fileName).ToUpper = ".ZAP" And Not fileName.Contains("_freq") Then
-                    If gameFilename = "" OrElse IO.Path.GetFileName(fileName).Length < gameFilename.Length Then gameFilename = IO.Path.GetFileName(fileName)
+                    Do
+                        line = reader.ReadLine
 
-                    Dim byteText() As Byte = IO.File.ReadAllBytes(fileName)
+                        If line IsNot Nothing Then
+                            If "GVLOHW".Contains(line.Substring(0, 1)) Then
+                                ' Replace ^, ~ and space
+                                line = line.Replace("^", LF_REPLACEMENT)
+                                line = line.Replace("~", QUOTE_REPLACEMENT)
+                                line = line.Replace(" ", SPACE_REPLACEMENT)
 
-                    For i As Long = 5 To byteText.Length - 1
-                        Dim opCodeString As String = System.Text.Encoding.ASCII.GetString(byteText, i - 5, 5).ToUpper
-                        If opCodeString = ".GSTR" Then
-                            searchFor34 = True
-                            packedAddress = True
-                        End If
-                        If opCodeString = ".STRL" Then
-                            searchFor34 = True
-                            packedAddress = False
-                        End If
-                        If opCodeString = "RINTI" Then
-                            searchFor34 = True
-                            packedAddress = False
-                        End If
-                        If opCodeString = "RINTR" Then
-                            searchFor34 = True
-                            packedAddress = False
-                        End If
-                        ' zversion is only relevant if we want to round to 6 zchars for strings in high memory
-                        ' ZAPF inserts the file in this order:
-                        '   game_freq.zap
-                        '   game_data.zap
-                        '   game.zap
-                        '   game_str.zap
-                        '
-                        '   dynamic memory : Everything to the label IMPURE (game_data.zap)
-                        '   static memory  : Between IMPURE and ENDLOD (game_data.zap)
-                        '   high memory    : Everything after ENDLOD
-                        '
-                        '   Only .GSTR is relevant for rounding to anything other than 3 because text
-                        '   in game.zap (inside code) always rounds to 3.
-                        If opCodeString = ".NEW " And ForceRoundingTo6 Then zversion = byteText(i) - 48
+                                ' Doesn't work yet for Inform6
+                                packedAddress = False
 
-                        If searchFor34 And byteText(i) = 34 Then
-                            startPos = i
-                            searchFor34 = False
-                            searchForCR = True
-                        End If
-
-                        If searchForCR And byteText(i) = 13 Then
-                            searchForCR = False
-
-                            ' Replace ", [LF] & Space with printable and legal characters for a Key
-                            If (i - startPos - 3) > 0 Then
-                                Dim byteTemp(i - startPos - 3) As Byte
-                                For j As Integer = 0 To byteTemp.Length - 1
-                                    Dim byteChar As Byte = byteText(startPos + 1 + j)
-                                    If byteChar = 10 Then byteChar = ASCII(LF_REPLACEMENT)
-                                    If byteChar = 32 Then byteChar = ASCII(SPACE_REPLACEMENT)
-                                    If byteChar = 34 Then byteChar = ASCII(QUOTE_REPLACEMENT)
-                                    byteTemp(j) = byteChar
-                                Next
-
-                                ' Create dictionary. Replace two double-quotes with one (the first is an escape-char). 
-                                Dim gameTextLine As New gameText(System.Text.Encoding.ASCII.GetString(byteTemp).Replace(String.Concat(QUOTE_REPLACEMENT, QUOTE_REPLACEMENT), QUOTE_REPLACEMENT))
+                                Dim gameTextLine As New gameText(line.Substring(3))
                                 gameTextLine.packedAddress = packedAddress
                                 gameTextList.Add(gameTextLine)
                                 For Each sKey In ExtractUniquePhrases(gameTextLine.text, 2, maxAbbreviationLen)
-                                    If Not patternDictionary.ContainsKey(sKey) Then
-                                        patternDictionary(sKey) = New patternData
-                                        patternDictionary(sKey).Cost = CalculateCost(sKey)
+                                    If Not sKey.Contains("@") Then
+                                        If Not patternDictionary.ContainsKey(sKey) Then
+                                            patternDictionary(sKey) = New patternData
+                                            patternDictionary(sKey).Cost = CalculateCost(sKey)
+                                        End If
+                                        patternDictionary(sKey).Frequency += CountOccurrencesReplace(gameTextLine.text, sKey)
+                                        patternDictionary(sKey).Key = sKey
                                     End If
-                                    patternDictionary(sKey).Frequency += CountOccurrencesReplace(gameTextLine.text, sKey)
-                                    patternDictionary(sKey).Key = sKey
                                 Next
+
                             End If
                         End If
-                    Next
+                    Loop Until line Is Nothing
+
+                    reader.Close()
+                Else
+                    Console.Error.WriteLine()
+                    Console.Error.WriteLine("ERROR: No 'gametext.txt' in directory.")
+                    Exit Sub
+                End If
+            Else
+                ' Get text from zap-files and store every line in a list of strings.
+                ' The ".GSTR", ".STRL", "PRINTI" and "PRINTR" Op-codes contains the text.
+                ' Every pattern is stored in a dictionary with the pattern as key.
+                For Each fileName As String In IO.Directory.GetFiles(gameDirectory)
+                    Dim startPos As Long = 0
+
+                    If IO.Path.GetExtension(fileName).ToUpper = ".ZAP" And Not fileName.Contains("_freq") Then
+                        If gameFilename = "" OrElse IO.Path.GetFileName(fileName).Length < gameFilename.Length Then gameFilename = IO.Path.GetFileName(fileName)
+
+                        If textEncoding Is Nothing Then
+                            If IsFileUTF8(fileName) Then
+                                textEncoding = System.Text.Encoding.UTF8
+                            Else
+                                textEncoding = System.Text.Encoding.Latin1
+                            End If
+
+                        End If
+
+                        Dim byteText() As Byte = IO.File.ReadAllBytes(fileName)
+
+                        For i As Long = 5 To byteText.Length - 1
+                            Dim opCodeString As String = textEncoding.GetString(byteText, i - 5, 5).ToUpper
+                            If opCodeString = ".GSTR" Then
+                                searchFor34 = True
+                                packedAddress = True
+                            End If
+                            If opCodeString = ".STRL" Then
+                                searchFor34 = True
+                                packedAddress = False
+                            End If
+                            If opCodeString = "RINTI" Then
+                                searchFor34 = True
+                                packedAddress = False
+                            End If
+                            If opCodeString = "RINTR" Then
+                                searchFor34 = True
+                                packedAddress = False
+                            End If
+                            ' zversion is only relevant if we want to round to 6 zchars for strings in high memory
+                            ' ZAPF inserts the file in this order:
+                            '   game_freq.zap
+                            '   game_data.zap
+                            '   game.zap
+                            '   game_str.zap
+                            '
+                            '   dynamic memory : Everything to the label IMPURE (game_data.zap)
+                            '   static memory  : Between IMPURE and ENDLOD (game_data.zap)
+                            '   high memory    : Everything after ENDLOD
+                            '
+                            '   Only .GSTR is relevant for rounding to anything other than 3 because text
+                            '   in game.zap (inside code) always rounds to 3.
+                            If opCodeString = ".NEW " And ForceRoundingTo6 Then zversion = byteText(i) - 48
+
+                            If searchFor34 And byteText(i) = 34 Then
+                                startPos = i
+                                searchFor34 = False
+                                searchForCR = True
+                            End If
+
+                            If searchForCR And byteText(i) = 13 Then
+                                searchForCR = False
+
+                                ' Replace ", [LF] & Space with printable and legal characters for a Key
+                                If (i - startPos - 3) > 0 Then
+                                    Dim byteTemp(i - startPos - 3) As Byte
+                                    For j As Integer = 0 To byteTemp.Length - 1
+                                        Dim byteChar As Byte = byteText(startPos + 1 + j)
+                                        If byteChar = 10 Then byteChar = ASCII(LF_REPLACEMENT)
+                                        If byteChar = 32 Then byteChar = ASCII(SPACE_REPLACEMENT)
+                                        If byteChar = 34 Then byteChar = ASCII(QUOTE_REPLACEMENT)
+                                        byteTemp(j) = byteChar
+                                    Next
+
+                                    ' Create dictionary. Replace two double-quotes with one (the first is an escape-char). 
+                                    Dim gameTextLine As New gameText(textEncoding.GetString(byteTemp).Replace(String.Concat(QUOTE_REPLACEMENT, QUOTE_REPLACEMENT), QUOTE_REPLACEMENT))
+                                    gameTextLine.packedAddress = packedAddress
+                                    gameTextList.Add(gameTextLine)
+                                    For Each sKey In ExtractUniquePhrases(gameTextLine.text, 2, maxAbbreviationLen)
+                                        If Not patternDictionary.ContainsKey(sKey) Then
+                                            patternDictionary(sKey) = New patternData
+                                            patternDictionary(sKey).Cost = CalculateCost(sKey)
+                                        End If
+                                        patternDictionary(sKey).Frequency += CountOccurrencesReplace(gameTextLine.text, sKey)
+                                        patternDictionary(sKey).Key = sKey
+                                    Next
+                                End If
+                            End If
+                        Next
+                    End If
+                Next
+            End If
+            Console.Error.WriteLine(String.Concat(gameTextList.Count.ToString(), " strings...", Now().AddTicks(-startTime.Ticks).ToString("s.fff \s")))
+
+            If gameTextList.Count = 0 Then
+                Console.Error.WriteLine("ERROR: No data to index.")
+                Exit Sub
+            End If
+
+            Console.Error.WriteLine(String.Concat("Text encoding: ", textEncoding.BodyName, ", ", textEncoding.EncodingName))
+
+            ' Add to a Max Heap
+            startTime = Date.Now
+            Console.Error.Write("Creating max heap...")
+            Dim maxHeap As New MoreComplexDataStructures.MaxHeap(Of patternData)
+            For Each KPD As KeyValuePair(Of String, patternData) In patternDictionary
+                If KPD.Value.Score > LOW_SCORE_CUTOFF Then
+                    KPD.Value.Savings = KPD.Value.Score
+                    maxHeap.Insert(KPD.Value)
                 End If
             Next
-        End If
-        Console.Error.WriteLine(String.Concat(gameTextList.Count.ToString(), " strings...", Now().AddTicks(-startTime.Ticks).ToString("s.fff \s")))
+            Console.Error.WriteLine(String.Concat(patternDictionary.Count.ToString(), " patterns...", Now().AddTicks(-startTime.Ticks).ToString("m.ss.fff \s")))
 
-        ' Add to a Max Heap
-        startTime = Date.Now
-        Console.Error.Write("Creating max heap...")
-        Dim maxHeap As New MoreComplexDataStructures.MaxHeap(Of patternData)
-        For Each KPD As KeyValuePair(Of String, patternData) In patternDictionary
-            If KPD.Value.Score > LOW_SCORE_CUTOFF Then
-                KPD.Value.Savings = KPD.Value.Score
-                maxHeap.Insert(KPD.Value)
-            End If
-        Next
-        Console.Error.WriteLine(String.Concat(patternDictionary.Count.ToString(), " patterns...", Now().AddTicks(-startTime.Ticks).ToString("m.ss.fff \s")))
-
-        startTime = Date.Now
-        Console.Error.Write("Searching for abbreviations with optimal parse...")
-        If printDebug Then Console.Error.WriteLine()
-        Dim bestCandidateList As New List(Of patternData)
-        Dim currentAbbrev As Integer = 0
-        Dim previousSavings As Integer = 0
-        Dim oversample As Integer = 0
-        If throwBackLowscorers Then oversample = 5
-        Do
-            bestCandidateList.Add(maxHeap.ExtractMax)
-            Dim currentSavings As Integer = RescoreOptimalParse(gameTextList, bestCandidateList, False, zversion)
-            Dim deltaSavings As Integer = currentSavings - previousSavings
-            If deltaSavings < maxHeap.Peek.Savings Then
-                ' If delta savings is less than top of heap then remove current abbrev and reinsert it in heap with new score and try next from heap
-                Dim KPD As patternData = bestCandidateList(currentAbbrev)
-                KPD.Savings = currentSavings - previousSavings
-                bestCandidateList.RemoveAt(currentAbbrev)
-                maxHeap.Insert(KPD)
-            Else
-                If printDebug Then Console.Error.WriteLine("Adding abbrev no " & (currentAbbrev + 1).ToString & ": " & FormatAbbreviation(bestCandidateList(currentAbbrev).Key) & ", Total savings: " & currentSavings.ToString)
-                Dim latestSavings As Integer = currentSavings - previousSavings
-                currentAbbrev += 1
-                previousSavings = currentSavings
-                If throwBackLowscorers Then
-                    ' put everthing back on heap that has lower savings than latest added
-                    Dim bNeedRecalculation As Boolean = False
-                    For i As Integer = bestCandidateList.Count - 1 To 0 Step -1
-                        If bestCandidateList(i).Savings < latestSavings Then
-                            If printDebug Then Console.Error.WriteLine("Removing abbrev: " & FormatAbbreviation(bestCandidateList(i).Key))
-                            maxHeap.Insert(bestCandidateList(i))
-                            bestCandidateList.RemoveAt(i)
-                            i -= 1
-                            currentAbbrev -= 1
-                            bNeedRecalculation = True
+            startTime = Date.Now
+            Console.Error.Write("Searching for abbreviations with optimal parse...")
+            If printDebug Then Console.Error.WriteLine()
+            Dim bestCandidateList As New List(Of patternData)
+            Dim currentAbbrev As Integer = 0
+            Dim previousSavings As Integer = 0
+            Dim oversample As Integer = 0
+            If throwBackLowscorers Then oversample = 5
+            Do
+                bestCandidateList.Add(maxHeap.ExtractMax)
+                Dim currentSavings As Integer = RescoreOptimalParse(gameTextList, bestCandidateList, False, zversion)
+                Dim deltaSavings As Integer = currentSavings - previousSavings
+                If deltaSavings < maxHeap.Peek.Savings Then
+                    ' If delta savings is less than top of heap then remove current abbrev and reinsert it in heap with new score and try next from heap
+                    Dim KPD As patternData = bestCandidateList(currentAbbrev)
+                    KPD.Savings = currentSavings - previousSavings
+                    bestCandidateList.RemoveAt(currentAbbrev)
+                    maxHeap.Insert(KPD)
+                Else
+                    If printDebug Then Console.Error.WriteLine("Adding abbrev no " & (currentAbbrev + 1).ToString & ": " & FormatAbbreviation(bestCandidateList(currentAbbrev).Key) & ", Total savings: " & currentSavings.ToString)
+                    Dim latestSavings As Integer = currentSavings - previousSavings
+                    currentAbbrev += 1
+                    previousSavings = currentSavings
+                    If throwBackLowscorers Then
+                        ' put everthing back on heap that has lower savings than latest added
+                        Dim bNeedRecalculation As Boolean = False
+                        For i As Integer = bestCandidateList.Count - 1 To 0 Step -1
+                            If bestCandidateList(i).Savings < latestSavings Then
+                                If printDebug Then Console.Error.WriteLine("Removing abbrev: " & FormatAbbreviation(bestCandidateList(i).Key))
+                                maxHeap.Insert(bestCandidateList(i))
+                                bestCandidateList.RemoveAt(i)
+                                i -= 1
+                                currentAbbrev -= 1
+                                bNeedRecalculation = True
+                            End If
+                        Next
+                        If bNeedRecalculation Then
+                            previousSavings = RescoreOptimalParse(gameTextList, bestCandidateList, False, zversion)
+                            If printDebug Then Console.Error.WriteLine("Total savings: " & previousSavings.ToString & " - Total Abbrevs: " & currentAbbrev.ToString)
                         End If
-                    Next
-                    If bNeedRecalculation Then
-                        previousSavings = RescoreOptimalParse(gameTextList, bestCandidateList, False, zversion)
-                        If printDebug Then Console.Error.WriteLine("Total savings: " & previousSavings.ToString & " - Total Abbrevs: " & currentAbbrev.ToString)
                     End If
+                End If
+
+            Loop Until currentAbbrev = (numberOfAbbrevs + oversample) Or maxHeap.Count = 0
+            Console.Error.WriteLine(String.Concat(Now().AddTicks(-startTime.Ticks).ToString("m.ss.fff \s")))
+
+            If printDebug Then
+                If inform6StyleText Then
+                    PrintAbbreviationsI6(AbbrevSort(bestCandidateList, False), gameFilename, True)
+                Else
+                    PrintAbbreviations(AbbrevSort(bestCandidateList, False), gameFilename, True)
                 End If
             End If
 
-        Loop Until currentAbbrev = (numberOfAbbrevs + oversample) Or maxHeap.Count = 0
-        Console.Error.WriteLine(String.Concat(Now().AddTicks(-startTime.Ticks).ToString("m.ss.fff \s")))
+            ' Restore best candidate list to numberOfAbbrevs patterns
+            For i As Integer = (numberOfAbbrevs + oversample - 1) To numberOfAbbrevs Step -1
+                maxHeap.Insert(bestCandidateList(i))
+                bestCandidateList.RemoveAt(i)
+            Next
 
-        If printDebug Then
-            If inform6StyleText Then
-                PrintAbbreviationsI6(AbbrevSort(bestCandidateList, False), gameFilename, True)
-            Else
-                PrintAbbreviations(AbbrevSort(bestCandidateList, False), gameFilename, True)
-            End If
-        End If
+            For pass As Integer = 0 To 1
+                Dim prevTotSavings As Integer = 0
+                Dim minSavings As Integer = 0
+                If (pass = 0 And deepRounding And Not fastBeforeDeep) Or (pass = 1 And deepRounding And fastBeforeDeep) Then
+                    ' Ok, we now have numberOfAbbrevs abbreviations
+                    ' Recalculate savings taking rounding into account and test a number of candidates to see if they yield a better result
+                    startTime = Date.Now
+                    Console.Error.Write("Searching for replacements among discarded...")
+                    If printDebug Then Console.Error.WriteLine()
+                    Dim passes As Integer = 0
+                    prevTotSavings = RescoreOptimalParse(gameTextList, bestCandidateList, True, zversion)
+                    minSavings = prevTotSavings
+                    For i As Integer = 0 To bestCandidateList.Count - 1
+                        If bestCandidateList(i).Savings < minSavings Then minSavings = bestCandidateList(i).Savings
+                    Next
+                    Do While passes < 10000 And maxHeap.Count > 0
+                        passes += 1
+                        Dim runnerup As patternData = maxHeap.ExtractMax
+                        'If runnerup.Savings < (minSavings \ 2) Then
+                        '    Continue Do
+                        'End If
+                        Dim replaced As Boolean = False
+                        For i = bestCandidateList.Count - 1 To 0 Step -1    ' Search from lowest savings uppward
 
-        ' Restore best candidate list to numberOfAbbrevs patterns
-        For i As Integer = (numberOfAbbrevs + oversample - 1) To numberOfAbbrevs Step -1
-            maxHeap.Insert(bestCandidateList(i))
-            bestCandidateList.RemoveAt(i)
-        Next
-
-        For pass As Integer = 0 To 1
-            Dim prevTotSavings As Integer = 0
-            Dim minSavings As Integer = 0
-            If (pass = 0 And deepRounding And Not fastBeforeDeep) Or (pass = 1 And deepRounding And fastBeforeDeep) Then
-                ' Ok, we now have numberOfAbbrevs abbreviations
-                ' Recalculate savings taking rounding into account and test a number of candidates to see if they yield a better result
-                startTime = Date.Now
-                Console.Error.Write("Searching for replacements among discarded...")
-                If printDebug Then Console.Error.WriteLine()
-                Dim passes As Integer = 0
-                prevTotSavings = RescoreOptimalParse(gameTextList, bestCandidateList, True, zversion)
-                minSavings = prevTotSavings
-                For i As Integer = 0 To bestCandidateList.Count - 1
-                    If bestCandidateList(i).Savings < minSavings Then minSavings = bestCandidateList(i).Savings
-                Next
-                Do While passes < 10000 And maxHeap.Count > 0
-                    passes += 1
-                    Dim runnerup As patternData = maxHeap.ExtractMax
-                    'If runnerup.Savings < (minSavings \ 2) Then
-                    '    Continue Do
-                    'End If
-                    Dim replaced As Boolean = False
-                    For i = bestCandidateList.Count - 1 To 0 Step -1    ' Search from lowest savings uppward
-
-                        If Not replaced Then
-                            If runnerup.Key.StartsWith(bestCandidateList(i).Key) OrElse
+                            If Not replaced Then
+                                If runnerup.Key.StartsWith(bestCandidateList(i).Key) OrElse
                                 runnerup.Key.EndsWith(bestCandidateList(i).Key) OrElse
                                 bestCandidateList(i).Key.StartsWith(runnerup.Key) OrElse
                                 bestCandidateList(i).Key.EndsWith(runnerup.Key) Then
-                                Dim tempCandidate As patternData = bestCandidateList(i)
-                                bestCandidateList.Insert(i, runnerup)
-                                bestCandidateList.RemoveAt(i + 1)
-                                Dim currentSavings = RescoreOptimalParse(gameTextList, bestCandidateList, True, zversion)
-                                Dim deltaSavings As Integer = currentSavings - prevTotSavings
-                                If deltaSavings > 0 Then
-                                    prevTotSavings = currentSavings
-                                    replaced = True
-                                    If printDebug Then Console.Error.WriteLine("Replacing " & FormatAbbreviation(tempCandidate.Key) & " with " & FormatAbbreviation(runnerup.Key) & ", saving " & deltaSavings.ToString & ", pass = " & passes.ToString)
-                                Else
-                                    bestCandidateList.Insert(i, tempCandidate)
+                                    Dim tempCandidate As patternData = bestCandidateList(i)
+                                    bestCandidateList.Insert(i, runnerup)
                                     bestCandidateList.RemoveAt(i + 1)
+                                    Dim currentSavings = RescoreOptimalParse(gameTextList, bestCandidateList, True, zversion)
+                                    Dim deltaSavings As Integer = currentSavings - prevTotSavings
+                                    If deltaSavings > 0 Then
+                                        prevTotSavings = currentSavings
+                                        replaced = True
+                                        If printDebug Then Console.Error.WriteLine("Replacing " & FormatAbbreviation(tempCandidate.Key) & " with " & FormatAbbreviation(runnerup.Key) & ", saving " & deltaSavings.ToString & ", pass = " & passes.ToString)
+                                    Else
+                                        bestCandidateList.Insert(i, tempCandidate)
+                                        bestCandidateList.RemoveAt(i + 1)
+                                    End If
                                 End If
                             End If
+
+                        Next
+                    Loop
+                    Console.Error.WriteLine(String.Concat(Now().AddTicks(-startTime.Ticks).ToString("m.ss.fff \s")))
+
+                    If pass = 0 And printDebug Then
+                        If inform6StyleText Then
+                            PrintAbbreviationsI6(AbbrevSort(bestCandidateList, False), gameFilename, True)
+                        Else
+                            PrintAbbreviations(AbbrevSort(bestCandidateList, False), gameFilename, True)
                         End If
-
-                    Next
-                Loop
-                Console.Error.WriteLine(String.Concat(Now().AddTicks(-startTime.Ticks).ToString("m.ss.fff \s")))
-
-                If pass = 0 And printDebug Then
-                    If inform6StyleText Then
-                        PrintAbbreviationsI6(AbbrevSort(bestCandidateList, False), gameFilename, True)
-                    Else
-                        PrintAbbreviations(AbbrevSort(bestCandidateList, False), gameFilename, True)
                     End If
                 End If
-            End If
 
-            If (pass = 1 And fastRounding And Not fastBeforeDeep) Or (pass = 0 And fastRounding And fastBeforeDeep) Then
-                ' Test if we add/remove initial/trailing space
-                startTime = Date.Now
-                Console.Error.Write("Add/remove initial/trailing space...")
-                If printDebug Then Console.Error.WriteLine()
-                prevTotSavings = RescoreOptimalParse(gameTextList, bestCandidateList, True, zversion)
-                minSavings = prevTotSavings
-                For i As Integer = 0 To bestCandidateList.Count - 1
-                    If bestCandidateList(i).Savings < minSavings Then minSavings = bestCandidateList(i).Savings
-                Next
+                If (pass = 1 And fastRounding And Not fastBeforeDeep) Or (pass = 0 And fastRounding And fastBeforeDeep) Then
+                    ' Test if we add/remove initial/trailing space
+                    startTime = Date.Now
+                    Console.Error.Write("Add/remove initial/trailing space...")
+                    If printDebug Then Console.Error.WriteLine()
+                    prevTotSavings = RescoreOptimalParse(gameTextList, bestCandidateList, True, zversion)
+                    minSavings = prevTotSavings
+                    For i As Integer = 0 To bestCandidateList.Count - 1
+                        If bestCandidateList(i).Savings < minSavings Then minSavings = bestCandidateList(i).Savings
+                    Next
 
-                For i As Integer = 0 To bestCandidateList.Count - 1
-                    If bestCandidateList(i).Key.StartsWith(SPACE_REPLACEMENT) Then
-                        bestCandidateList(i).Key = bestCandidateList(i).Key.Substring(1)
-                        bestCandidateList(i).Cost -= 1
-                        Dim currentSavings = RescoreOptimalParse(gameTextList, bestCandidateList, True, zversion)
-                        Dim deltaSavings As Integer = currentSavings - prevTotSavings
-                        If deltaSavings > 0 Then
-                            ' Keep it
-                            prevTotSavings = currentSavings
-                            If printDebug Then Console.Error.WriteLine("Removing intial space on " & SPACE_REPLACEMENT & FormatAbbreviation(bestCandidateList(i).Key) & ", saving " & deltaSavings.ToString)
-                        Else
-                            ' Restore
-                            bestCandidateList(i).Key = SPACE_REPLACEMENT & bestCandidateList(i).Key
-                            bestCandidateList(i).Cost += 1
-                        End If
-                    Else
-                        bestCandidateList(i).Key = SPACE_REPLACEMENT & bestCandidateList(i).Key
-                        bestCandidateList(i).Cost += 1
-                        Dim currentSavings = RescoreOptimalParse(gameTextList, bestCandidateList, True, zversion)
-                        Dim deltaSavings As Integer = currentSavings - prevTotSavings
-                        If deltaSavings > 0 Then
-                            ' Keep it
-                            prevTotSavings = currentSavings
-                            If printDebug Then Console.Error.WriteLine("Adding intial space on " & FormatAbbreviation(bestCandidateList(i).Key.Substring(1)) & ", saving " & deltaSavings.ToString)
-                        Else
-                            ' Restore
+                    For i As Integer = 0 To bestCandidateList.Count - 1
+                        If bestCandidateList(i).Key.StartsWith(SPACE_REPLACEMENT) Then
                             bestCandidateList(i).Key = bestCandidateList(i).Key.Substring(1)
                             bestCandidateList(i).Cost -= 1
-                        End If
-                    End If
-                Next
-
-                For i As Integer = 0 To bestCandidateList.Count - 1
-                    If bestCandidateList(i).Key.EndsWith(SPACE_REPLACEMENT) Then
-                        bestCandidateList(i).Key = bestCandidateList(i).Key.Substring(0, bestCandidateList(i).Key.Length - 1)
-                        bestCandidateList(i).Cost -= 1
-                        Dim currentSavings = RescoreOptimalParse(gameTextList, bestCandidateList, True, zversion)
-                        Dim deltaSavings As Integer = currentSavings - prevTotSavings
-                        If deltaSavings > 0 Then
-                            ' Keep it
-                            prevTotSavings = currentSavings
-                            If printDebug Then Console.Error.WriteLine("Removing trailing space on " & FormatAbbreviation(bestCandidateList(i).Key) & SPACE_REPLACEMENT & ", saving " & deltaSavings.ToString)
+                            Dim currentSavings = RescoreOptimalParse(gameTextList, bestCandidateList, True, zversion)
+                            Dim deltaSavings As Integer = currentSavings - prevTotSavings
+                            If deltaSavings > 0 Then
+                                ' Keep it
+                                prevTotSavings = currentSavings
+                                If printDebug Then Console.Error.WriteLine("Removing intial space on " & SPACE_REPLACEMENT & FormatAbbreviation(bestCandidateList(i).Key) & ", saving " & deltaSavings.ToString)
+                            Else
+                                ' Restore
+                                bestCandidateList(i).Key = SPACE_REPLACEMENT & bestCandidateList(i).Key
+                                bestCandidateList(i).Cost += 1
+                            End If
                         Else
-                            ' Restore
-                            bestCandidateList(i).Key = bestCandidateList(i).Key & SPACE_REPLACEMENT
+                            bestCandidateList(i).Key = SPACE_REPLACEMENT & bestCandidateList(i).Key
                             bestCandidateList(i).Cost += 1
+                            Dim currentSavings = RescoreOptimalParse(gameTextList, bestCandidateList, True, zversion)
+                            Dim deltaSavings As Integer = currentSavings - prevTotSavings
+                            If deltaSavings > 0 Then
+                                ' Keep it
+                                prevTotSavings = currentSavings
+                                If printDebug Then Console.Error.WriteLine("Adding intial space on " & FormatAbbreviation(bestCandidateList(i).Key.Substring(1)) & ", saving " & deltaSavings.ToString)
+                            Else
+                                ' Restore
+                                bestCandidateList(i).Key = bestCandidateList(i).Key.Substring(1)
+                                bestCandidateList(i).Cost -= 1
+                            End If
                         End If
-                    Else
-                        bestCandidateList(i).Key = bestCandidateList(i).Key & SPACE_REPLACEMENT
-                        bestCandidateList(i).Cost += 1
-                        Dim currentSavings = RescoreOptimalParse(gameTextList, bestCandidateList, True, zversion)
-                        Dim deltaSavings As Integer = currentSavings - prevTotSavings
-                        If deltaSavings > 0 Then
-                            ' Keep it
-                            prevTotSavings = currentSavings
-                            If printDebug Then Console.Error.WriteLine("Adding trailing space on " & FormatAbbreviation(bestCandidateList(i).Key.Substring(0, bestCandidateList(i).Key.Length - 1)) & ", saving " & deltaSavings.ToString)
-                        Else
-                            ' Restore
+                    Next
+
+                    For i As Integer = 0 To bestCandidateList.Count - 1
+                        If bestCandidateList(i).Key.EndsWith(SPACE_REPLACEMENT) Then
                             bestCandidateList(i).Key = bestCandidateList(i).Key.Substring(0, bestCandidateList(i).Key.Length - 1)
                             bestCandidateList(i).Cost -= 1
+                            Dim currentSavings = RescoreOptimalParse(gameTextList, bestCandidateList, True, zversion)
+                            Dim deltaSavings As Integer = currentSavings - prevTotSavings
+                            If deltaSavings > 0 Then
+                                ' Keep it
+                                prevTotSavings = currentSavings
+                                If printDebug Then Console.Error.WriteLine("Removing trailing space on " & FormatAbbreviation(bestCandidateList(i).Key) & SPACE_REPLACEMENT & ", saving " & deltaSavings.ToString)
+                            Else
+                                ' Restore
+                                bestCandidateList(i).Key = bestCandidateList(i).Key & SPACE_REPLACEMENT
+                                bestCandidateList(i).Cost += 1
+                            End If
+                        Else
+                            bestCandidateList(i).Key = bestCandidateList(i).Key & SPACE_REPLACEMENT
+                            bestCandidateList(i).Cost += 1
+                            Dim currentSavings = RescoreOptimalParse(gameTextList, bestCandidateList, True, zversion)
+                            Dim deltaSavings As Integer = currentSavings - prevTotSavings
+                            If deltaSavings > 0 Then
+                                ' Keep it
+                                prevTotSavings = currentSavings
+                                If printDebug Then Console.Error.WriteLine("Adding trailing space on " & FormatAbbreviation(bestCandidateList(i).Key.Substring(0, bestCandidateList(i).Key.Length - 1)) & ", saving " & deltaSavings.ToString)
+                            Else
+                                ' Restore
+                                bestCandidateList(i).Key = bestCandidateList(i).Key.Substring(0, bestCandidateList(i).Key.Length - 1)
+                                bestCandidateList(i).Cost -= 1
+                            End If
+                        End If
+                    Next
+                    Console.Error.WriteLine(String.Concat(Now().AddTicks(-startTime.Ticks).ToString("m.ss.fff \s")))
+                    If pass = 0 And printDebug Then
+                        If inform6StyleText Then
+                            PrintAbbreviationsI6(AbbrevSort(bestCandidateList, False), gameFilename, True)
+                        Else
+                            PrintAbbreviations(AbbrevSort(bestCandidateList, False), gameFilename, True)
                         End If
                     End If
-                Next
-                Console.Error.WriteLine(String.Concat(Now().AddTicks(-startTime.Ticks).ToString("m.ss.fff \s")))
-                If pass = 0 And printDebug Then
-                    If inform6StyleText Then
-                        PrintAbbreviationsI6(AbbrevSort(bestCandidateList, False), gameFilename, True)
-                    Else
-                        PrintAbbreviations(AbbrevSort(bestCandidateList, False), gameFilename, True)
-                    End If
                 End If
-            End If
-        Next
+            Next
 
-        ' Print result
-        If inform6StyleText Then
-            PrintAbbreviationsI6(AbbrevSort(bestCandidateList, False), gameFilename, False)
-        Else
-            PrintAbbreviations(AbbrevSort(bestCandidateList, False), gameFilename, False)
-        End If
-        RescoreOptimalParse(gameTextList, bestCandidateList, False, zversion)
-        totalSavings = 0
-        Dim maxAbbrevs As Integer = bestCandidateList.Count - 1
-        If maxAbbrevs >= numberOfAbbrevs Then maxAbbrevs = numberOfAbbrevs - 1
-        For i As Integer = 0 To maxAbbrevs
-            totalSavings += bestCandidateList(i).Savings
-        Next
-        Console.Error.WriteLine(String.Concat("Abbrevs would save ", totalSavings.ToString, " z-chars total (~", CInt(totalSavings * 2 / 3).ToString, " bytes)"))
-        Console.Error.WriteLine(String.Concat("Totaltid: ", Now().AddTicks(-totalStartTime.Ticks).ToString("m:ss.fff \s")))
+            ' Print result
+            If inform6StyleText Then
+                PrintAbbreviationsI6(AbbrevSort(bestCandidateList, False), gameFilename, False)
+            Else
+                PrintAbbreviations(AbbrevSort(bestCandidateList, False), gameFilename, False)
+            End If
+            RescoreOptimalParse(gameTextList, bestCandidateList, False, zversion)
+            totalSavings = 0
+            Dim maxAbbrevs As Integer = bestCandidateList.Count - 1
+            If maxAbbrevs >= numberOfAbbrevs Then maxAbbrevs = numberOfAbbrevs - 1
+            For i As Integer = 0 To maxAbbrevs
+                totalSavings += bestCandidateList(i).Savings
+            Next
+            Console.Error.WriteLine(String.Concat("Abbrevs would save ", totalSavings.ToString, " z-chars total (~", CInt(totalSavings * 2 / 3).ToString, " bytes)"))
+            Console.Error.WriteLine(String.Concat("Totaltid: ", Now().AddTicks(-totalStartTime.Ticks).ToString("m:ss.fff \s")))
+        Catch ex As Exception
+            Console.Error.WriteLine("ERROR: ZAbbrevMaker failed.")
+        End Try
     End Sub
 
     Public Class gameText
@@ -578,7 +630,7 @@ Module Program
     End Class
 
     Private Function ASCII(cChr As Char) As Integer
-        Return System.Text.Encoding.ASCII.GetBytes(cChr)(0)
+        Return textEncoding.GetBytes(cChr)(0)
     End Function
 
     Private Function CalculateCost(sText As String) As Integer
@@ -791,4 +843,20 @@ Module Program
         Next
     End Sub
 
+    Private Function IsFileUTF8(fileName As String) As Boolean
+        Dim FallbackExp As New System.Text.DecoderExceptionFallback
+
+        Dim fileBytes() As Byte = IO.File.ReadAllBytes(fileName)
+        Dim decoderUTF8 = System.Text.Encoding.UTF8.GetDecoder
+        decoderUTF8.Fallback = FallbackExp
+        Dim IsUTF8 As Boolean = False
+        Try
+            Dim charCount As Integer = decoderUTF8.GetCharCount(fileBytes, 0, fileBytes.Length)
+            IsUTF8 = True
+        Catch
+            IsUTF8 = False
+        End Try
+
+        Return IsUTF8
+    End Function
 End Module
