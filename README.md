@@ -19,8 +19,8 @@ Precompiled binaries for linux-arm, linux-x64, osx-x64, win-x86, win-x64 & win-a
     ZAbbrevMaker 0.6
     ZAbbrevMaker [switches] [path-to-game]
     
-     -a           Create a tailor-made alphabet for this game and use it as basis for
-                  the abbreviations (z5+ only).
+      -a           Create a tailor-made alphabet for this game and use it as basis for
+                   the abbreviations (z5+ only).
       -a0 <string> Define 26 characters for alphabet A0.
       -a1 <string> Define 26 characters for alphabet A1.
       -a2 <string> Define 23 characters for alphabet A2.
