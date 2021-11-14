@@ -13,7 +13,6 @@
 Imports System
 
 Module Program
-    Public Const LOW_SCORE_CUTOFF As Integer = 20
     Public Const NUMBER_OF_ABBREVIATIONS As Integer = 96
     Public Const ABBREVIATION_MAX_LENGTH As Integer = 20
     Public Const SPACE_REPLACEMENT As Char = "^"
@@ -102,7 +101,7 @@ Module Program
                         i += 1
                     End If
                 Case "-h", "--help", "\?"
-                    Console.Error.WriteLine("ZAbbrevMaker 0.5")
+                    Console.Error.WriteLine("ZAbbrevMaker 0.6")
                     Console.Error.WriteLine("ZAbbrevMaker [switches] [path-to-game]")
                     Console.Error.WriteLine()
                     Console.Error.WriteLine(" -a           Create a tailor-made alphabet for this game and use it as basis for")
@@ -187,7 +186,7 @@ Module Program
                                        throwBackLowscorers As Boolean,
                                        printDebug As Boolean)
         Try
-            Console.Error.WriteLine("ZAbbrevMaker 0.5")
+            Console.Error.WriteLine("ZAbbrevMaker 0.6")
 
             If Not IO.Directory.Exists(gameDirectory) Then
                 Console.Error.WriteLine("ERROR: Can't find specified directory.")
@@ -198,8 +197,6 @@ Module Program
             Dim searchForCR As Boolean = False
             Dim gameTextList As List(Of gameText) = New List(Of gameText)
             Dim patternDictionary As New Dictionary(Of String, patternData)
-            Dim candidateThreshold As Integer = LOW_SCORE_CUTOFF
-            Dim lowscoreCutoff As Integer = LOW_SCORE_CUTOFF
             Dim totalSavings As Integer = 0
             Dim zversion As Integer = 3
             Dim gameFilename As String = ""
@@ -213,6 +210,12 @@ Module Program
             Console.Error.Write("Indexing files...")
 
             If inform6StyleText Then
+
+                If maxAbbreviationLen > 63 Then
+                    Console.Error.WriteLine("WARNING: Max length of abbreviations in Inform are 63 characters. Setting length to 63.")
+                    maxAbbreviationLen = 63
+                End If
+
                 ' Inform6 text are in "gametext.txt". 
                 ' "gametext.txt" is produced by: inform6.exe -r $TRANSCRIPT_FORMAT=1 <gamefile>.inf
                 ' Each line is coded
@@ -227,7 +230,7 @@ Module Program
                 '   X:infix
                 '   H:game text inline in opcode
                 '   W:veneer text inline in opcode
-                ' Only text on lines GVLOHW should be indexed.
+                ' Only text on lines GVLOSHW should be indexed.
                 ' ^ means CR and ~ means ".
                 ' Candidate strings that contains a @ should not be considered.
                 If IO.File.Exists(IO.Path.Combine(gameDirectory, "gametext.txt")) Then
@@ -248,7 +251,7 @@ Module Program
                         line = reader.ReadLine
 
                         If line IsNot Nothing Then
-                            If "GVLOHW".Contains(line.Substring(0, 1)) Then
+                            If "GVLOSHW".Contains(line.Substring(0, 1)) Then
                                 ' Replace ^, ~ and space
                                 line = line.Replace("^", LF_REPLACEMENT)
                                 line = line.Replace("~", QUOTE_REPLACEMENT)
@@ -423,12 +426,10 @@ Module Program
             Console.Error.Write("Creating max heap...")
             Dim maxHeap As New MoreComplexDataStructures.MaxHeap(Of patternData)
             For Each KPD As KeyValuePair(Of String, patternData) In patternDictionary
-                If KPD.Value.Score > LOW_SCORE_CUTOFF Then
-                    KPD.Value.Savings = KPD.Value.Score
-                    maxHeap.Insert(KPD.Value)
-                End If
+                KPD.Value.Savings = KPD.Value.Score
+                maxHeap.Insert(KPD.Value)
             Next
-            Console.Error.WriteLine(String.Concat(patternDictionary.Count.ToString(), " patterns...", Now().AddTicks(-startTime.Ticks).ToString("m.ss.fff \s")))
+            Console.Error.WriteLine(String.Concat(patternDictionary.Count.ToString(), " total patterns on heap...", Now().AddTicks(-startTime.Ticks).ToString("m.ss.fff \s")))
 
             startTime = Date.Now
             Console.Error.Write("Searching for abbreviations with optimal parse...")
