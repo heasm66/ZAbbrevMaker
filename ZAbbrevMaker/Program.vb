@@ -84,11 +84,7 @@ Module Program
                     fastRounding = True
                     deepRounding = True
                     fastBeforeDeep = False
-                Case "-df"
-                    fastRounding = True
-                    deepRounding = True
-                    fastBeforeDeep = True
-                Case "-df"
+                Case "-fd"
                     fastRounding = True
                     deepRounding = True
                     fastBeforeDeep = True
@@ -101,7 +97,7 @@ Module Program
                         i += 1
                     End If
                 Case "-h", "--help", "\?"
-                    Console.Error.WriteLine("ZAbbrevMaker 0.6")
+                    Console.Error.WriteLine("ZAbbrevMaker 0.7")
                     Console.Error.WriteLine("ZAbbrevMaker [switches] [path-to-game]")
                     Console.Error.WriteLine()
                     Console.Error.WriteLine(" -a           Create a tailor-made alphabet for this game and use it as basis for")
@@ -109,7 +105,6 @@ Module Program
                     Console.Error.WriteLine(" -a0 <string> Define 26 characters for alphabet A0.")
                     Console.Error.WriteLine(" -a1 <string> Define 26 characters for alphabet A1.")
                     Console.Error.WriteLine(" -a2 <string> Define 23 characters for alphabet A2.")
-                    Console.Error.WriteLine("              the abbreviations (z5+ only).")
                     Console.Error.WriteLine("              Experimental - works best when text encoding is in ISO-8859-1 (C0 or C1).")
                     Console.Error.WriteLine(" -b           Throw all abbreviations that have lower score than last pick back on heap.")
                     Console.Error.WriteLine("              (This only occasionally improves the result, use sparingly.)")
@@ -186,7 +181,7 @@ Module Program
                                        throwBackLowscorers As Boolean,
                                        printDebug As Boolean)
         Try
-            Console.Error.WriteLine("ZAbbrevMaker 0.6")
+            Console.Error.WriteLine("ZAbbrevMaker 0.7")
 
             If Not IO.Directory.Exists(gameDirectory) Then
                 Console.Error.WriteLine("ERROR: Can't find specified directory.")
@@ -273,7 +268,7 @@ Module Program
                                 gameTextLine.packedAddress = packedAddress
                                 gameTextList.Add(gameTextLine)
                                 For Each sKey In ExtractUniquePhrases(gameTextLine.text, 2, maxAbbreviationLen)
-                                    If Not sKey.Contains("@") Then
+                                    If Not sKey.Contains("@") Then ' TODO: Don't ignores all Inform escape-characters
                                         If Not patternDictionary.ContainsKey(sKey) Then
                                             patternDictionary(sKey) = New patternData
                                             patternDictionary(sKey).Cost = CalculateCost(sKey)
@@ -426,6 +421,10 @@ Module Program
             Console.Error.Write("Creating max heap...")
             Dim maxHeap As New MoreComplexDataStructures.MaxHeap(Of patternData)
             For Each KPD As KeyValuePair(Of String, patternData) In patternDictionary
+
+                ' Recalculate cost if where using a newly defined custom alphabet
+                If customAlphabet Then KPD.Value.Cost = CalculateCost(KPD.Value.Key)
+
                 KPD.Value.Savings = KPD.Value.Score
                 maxHeap.Insert(KPD.Value)
             Next
@@ -569,7 +568,7 @@ Module Program
                             If deltaSavings > 0 Then
                                 ' Keep it
                                 prevTotSavings = currentSavings
-                                If printDebug Then Console.Error.WriteLine("Removing intial space on " & SPACE_REPLACEMENT & FormatAbbreviation(bestCandidateList(i).Key) & ", saving " & deltaSavings.ToString)
+                                If printDebug Then Console.Error.WriteLine("Removing intial space on " & FormatAbbreviation(SPACE_REPLACEMENT & bestCandidateList(i).Key) & ", saving " & deltaSavings.ToString)
                             Else
                                 ' Restore
                                 bestCandidateList(i).Key = SPACE_REPLACEMENT & bestCandidateList(i).Key
@@ -601,7 +600,7 @@ Module Program
                             If deltaSavings > 0 Then
                                 ' Keep it
                                 prevTotSavings = currentSavings
-                                If printDebug Then Console.Error.WriteLine("Removing trailing space on " & FormatAbbreviation(bestCandidateList(i).Key) & SPACE_REPLACEMENT & ", saving " & deltaSavings.ToString)
+                                If printDebug Then Console.Error.WriteLine("Removing trailing space on " & FormatAbbreviation(bestCandidateList(i).Key & SPACE_REPLACEMENT) & ", saving " & deltaSavings.ToString)
                             Else
                                 ' Restore
                                 bestCandidateList(i).Key = bestCandidateList(i).Key & SPACE_REPLACEMENT
@@ -718,19 +717,18 @@ Module Program
         Dim iCost As Integer = 0
         For i As Integer = 0 To sText.Length - 1
             cCurrent = CChar(sText.Substring(i, 1))
-            If (cCurrent >= "a" And cCurrent <= "z") OrElse cCurrent = SPACE_REPLACEMENT Then
+            If A0.Contains(cCurrent, StringComparison.Ordinal) OrElse cCurrent = SPACE_REPLACEMENT Then
                 ' Alphabet A0 and space
                 iCost += 1
-            ElseIf cCurrent >= "A" And cCurrent <= "Z" Then
+            ElseIf A1.Contains(cCurrent, StringComparison.Ordinal) Then
                 ' Alphabet A1
                 iCost += 2
-            ElseIf (cCurrent >= "0" And cCurrent <= "9") OrElse ".,!?_#'/\-:()".Contains(cCurrent) OrElse cCurrent = QUOTE_REPLACEMENT OrElse cCurrent = LF_REPLACEMENT Then
+            ElseIf A2.Contains(cCurrent, StringComparison.Ordinal) OrElse cCurrent = QUOTE_REPLACEMENT OrElse cCurrent = LF_REPLACEMENT Then
                 ' Alphabet A2
                 iCost += 2
             Else
-                ' ZSCII escape, don't count next two characters 
+                ' All other chars cost 4 
                 iCost += 4
-                i += 2
             End If
         Next
 
