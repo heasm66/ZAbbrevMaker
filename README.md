@@ -16,7 +16,7 @@ Precompiled binaries for linux-arm, linux-x64, osx-x64, win-x86, win-x64 & win-a
 
 ## Instructions
 
-    ZAbbrevMaker 0.6
+    ZAbbrevMaker 0.7
     ZAbbrevMaker [switches] [path-to-game]
     
       -a           Create a tailor-made alphabet for this game and use it as basis for
