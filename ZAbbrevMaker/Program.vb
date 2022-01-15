@@ -97,7 +97,7 @@ Module Program
                         i += 1
                     End If
                 Case "-h", "--help", "\?"
-                    Console.Error.WriteLine("ZAbbrevMaker 0.7")
+                    Console.Error.WriteLine("ZAbbrevMaker 0.8")
                     Console.Error.WriteLine("ZAbbrevMaker [switches] [path-to-game]")
                     Console.Error.WriteLine()
                     Console.Error.WriteLine(" -a           Create a tailor-made alphabet for this game and use it as basis for")
@@ -181,7 +181,7 @@ Module Program
                                        throwBackLowscorers As Boolean,
                                        printDebug As Boolean)
         Try
-            Console.Error.WriteLine("ZAbbrevMaker 0.7")
+            Console.Error.WriteLine("ZAbbrevMaker 0.8")
 
             If Not IO.Directory.Exists(gameDirectory) Then
                 Console.Error.WriteLine("ERROR: Can't find specified directory.")
@@ -761,6 +761,13 @@ Module Program
                 patternList.Add(pattern)
             Next
         Next
+
+        ' Add single characters that have a high charCost (not in A0-A2 alphabet)
+        For i As Integer = 0 To textLine.Length - 1
+            Dim pattern As String = textLine.Substring(i, 1)
+            If zcharCost(pattern) > 3 Then patternList.Add(pattern)
+        Next
+
         Return patternList.Distinct.ToList
     End Function
 
