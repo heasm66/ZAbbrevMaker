@@ -16,7 +16,7 @@ Precompiled binaries for linux-arm, linux-x64, osx-x64, win-x86, win-x64 & win-a
 
 ## Instructions
 
-    ZAbbrevMaker 0.7
+    ZAbbrevMaker 0.9
     ZAbbrevMaker [switches] [path-to-game]
     
       -a           Create a tailor-made alphabet for this game and use it as basis for
@@ -51,6 +51,10 @@ Precompiled binaries for linux-arm, linux-x64, osx-x64, win-x86, win-x64 & win-a
     ZAbbrevMaker executed without any switches in folder with zap-files is
     the same as 'ZAbbrevMaker -l 20 -df'.
     
+## Changelog
+v0.8  2022-01-15 Compiled with Visual Studio 2019 and NET5.0
+v0.9  2023-08-12 Compiled with Visual Studio 2022 and NET7.0, Some code cleanup and compile optimization.
+
 ## References
 https://intfiction.org/t/highly-optimized-abbreviations-computed-efficiently/48753  
 https://gitlab.com/russotto/zilabbrs  

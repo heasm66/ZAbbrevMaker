@@ -1,5 +1,5 @@
 
-'Copyright (C) 2021 Henrik Åsman
+'Copyright (C) 2021, 2023 Henrik Åsman
 'You can redistribute and/or modify this file under the terms of the
 'GNU General Public License as published by the Free Software
 'Foundation, either version 3 of the License, or (at your option) any
@@ -10,26 +10,32 @@
 'General Public License for more details.
 'You should have received a copy of the GNU General Public License
 'along with this file. If not, see <https://www.gnu.org/licenses/>."
+
+' Changelog:
+' 0.8  2022-01-15 Visual Studio 2019, NET5.0
+' 0.9  2023-08-11 Visual Studio 2022, NET7.0
+'                 Using new features when publishing
+'                 Small optimizations
 Imports System
 
 Module Program
     Public Const NUMBER_OF_ABBREVIATIONS As Integer = 96
     Public Const ABBREVIATION_MAX_LENGTH As Integer = 20
-    Public Const SPACE_REPLACEMENT As Char = "^"
-    Public Const QUOTE_REPLACEMENT As Char = "~"
-    Public Const LF_REPLACEMENT As Char = "|"
+    Public Const SPACE_REPLACEMENT As Char = CChar("^")
+    Public Const QUOTE_REPLACEMENT As Char = CChar("~")
+    Public Const LF_REPLACEMENT As Char = CChar("|")
 
-    Private defaultA0 As String = "abcdefghijklmnopqrstuvwxyz"
-    Private defaultA1 As String = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-    Private defaultA2 As String = "0123456789.,!?_#'/\-:()"     ' 3 slots are reserved for an escape char, newline and doublequote
+    Private ReadOnly defaultA0 As String = "abcdefghijklmnopqrstuvwxyz"
+    Private ReadOnly defaultA1 As String = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    Private ReadOnly defaultA2 As String = "0123456789.,!?_#'/\-:()"     ' 3 slots are reserved for an escape char, newline and doublequote
     Private customAlphabet As Boolean = False
     Private A0 As String = defaultA0
     Private A1 As String = defaultA1
     Private A2 As String = defaultA2
 
-    Private Property numberOfAbbrevs As Integer = NUMBER_OF_ABBREVIATIONS
+    Private Property NumberOfAbbrevs As Integer = NUMBER_OF_ABBREVIATIONS
 
-    Private Property textEncoding As System.Text.Encoding = Nothing
+    Private Property TextEncoding As System.Text.Encoding = Nothing
 
     Sub Main(args As String())
         Dim forceRoundingTo3 As Boolean = False
@@ -43,26 +49,26 @@ Module Program
         Dim maxAbbreviationLen As Integer = ABBREVIATION_MAX_LENGTH
 
         ' Parse arguments
-        For i As Integer = 0 To args.Count - 1
+        For i As Integer = 0 To args.Length - 1
             Select Case args(i)
                 Case "-a"
                     customAlphabet = True
                 Case "-a0"
-                    If i < args.Count - 1 AndAlso args(i + 1).Length = 26 Then
+                    If i < args.Length - 1 AndAlso args(i + 1).Length = 26 Then
                         A0 = args(i + 1)
                         i += 1
                     Else
                         Console.Error.WriteLine("ERROR: Can't use defined A0 (needs 26 characters). Using defailt instead.")
                     End If
                 Case "-a1"
-                    If i < args.Count - 1 AndAlso args(i + 1).Length = 26 Then
+                    If i < args.Length - 1 AndAlso args(i + 1).Length = 26 Then
                         A1 = args(i + 1)
                         i += 1
                     Else
                         Console.Error.WriteLine("ERROR: Can't use defined A1 (needs 26 characters). Using defailt instead.")
                     End If
                 Case "-a2"
-                    If i < args.Count - 1 AndAlso args(i + 1).Length = 23 Then
+                    If i < args.Length - 1 AndAlso args(i + 1).Length = 23 Then
                         A2 = args(i + 1)
                         i += 1
                     Else
@@ -89,15 +95,15 @@ Module Program
                     deepRounding = True
                     fastBeforeDeep = True
                 Case "-l"
-                    If i < args.Count - 1 AndAlso Integer.TryParse(args(i + 1), maxAbbreviationLen) Then
+                    If i < args.Length - 1 AndAlso Integer.TryParse(args(i + 1), maxAbbreviationLen) Then
                         i += 1
                     End If
                 Case "-n"
-                    If i < args.Count - 1 AndAlso Integer.TryParse(args(i + 1), numberOfAbbrevs) Then
+                    If i < args.Length - 1 AndAlso Integer.TryParse(args(i + 1), NumberOfAbbrevs) Then
                         i += 1
                     End If
                 Case "-h", "--help", "\?"
-                    Console.Error.WriteLine("ZAbbrevMaker 0.8")
+                    Console.Error.WriteLine("ZAbbrevMaker 0.9")
                     Console.Error.WriteLine("ZAbbrevMaker [switches] [path-to-game]")
                     Console.Error.WriteLine()
                     Console.Error.WriteLine(" -a           Create a tailor-made alphabet for this game and use it as basis for")
@@ -134,11 +140,11 @@ Module Program
                 Case "-i"
                     inform6StyleText = True
                 Case "-c0"
-                    textEncoding = System.Text.Encoding.ASCII
+                    TextEncoding = System.Text.Encoding.ASCII
                 Case "-cu"
-                    textEncoding = System.Text.Encoding.UTF8
+                    TextEncoding = System.Text.Encoding.UTF8
                 Case "-c1"
-                    textEncoding = System.Text.Encoding.Latin1
+                    TextEncoding = System.Text.Encoding.Latin1
                 Case Else
                     If IO.Directory.Exists(args(i)) Then
                         gameDirectory = args(i)
@@ -181,7 +187,7 @@ Module Program
                                        throwBackLowscorers As Boolean,
                                        printDebug As Boolean)
         Try
-            Console.Error.WriteLine("ZAbbrevMaker 0.8")
+            Console.Error.WriteLine("ZAbbrevMaker 0.9")
 
             If Not IO.Directory.Exists(gameDirectory) Then
                 Console.Error.WriteLine("ERROR: Can't find specified directory.")
@@ -190,8 +196,8 @@ Module Program
 
             Dim searchFor34 As Boolean = False
             Dim searchForCR As Boolean = False
-            Dim gameTextList As List(Of gameText) = New List(Of gameText)
-            Dim patternDictionary As New Dictionary(Of String, patternData)
+            Dim gameTextList As New List(Of GameText)
+            Dim patternDictionary As New Dictionary(Of String, PatternData)
             Dim totalSavings As Integer = 0
             Dim zversion As Integer = 3
             Dim gameFilename As String = ""
@@ -230,16 +236,16 @@ Module Program
                 ' Candidate strings that contains a @ should not be considered.
                 If IO.File.Exists(IO.Path.Combine(gameDirectory, "gametext.txt")) Then
 
-                    If textEncoding Is Nothing Then
+                    If TextEncoding Is Nothing Then
                         'Try to autodetect encoding
                         If IsFileUTF8(IO.Path.Combine(gameDirectory, "gametext.txt")) Then
-                            textEncoding = System.Text.Encoding.UTF8
+                            TextEncoding = System.Text.Encoding.UTF8
                         Else
-                            textEncoding = System.Text.Encoding.Latin1
+                            TextEncoding = System.Text.Encoding.Latin1
                         End If
                     End If
 
-                    Dim reader As New IO.StreamReader(IO.Path.Combine(gameDirectory, "gametext.txt"), textEncoding)
+                    Dim reader As New IO.StreamReader(IO.Path.Combine(gameDirectory, "gametext.txt"), TextEncoding)
                     Dim line As String
 
                     Do
@@ -264,14 +270,12 @@ Module Program
                                 ' Doesn't work yet for Inform6
                                 packedAddress = False
 
-                                Dim gameTextLine As New gameText(line.Substring(3))
-                                gameTextLine.packedAddress = packedAddress
+                                Dim gameTextLine As New GameText(line.Substring(3)) With {.packedAddress = packedAddress}
                                 gameTextList.Add(gameTextLine)
                                 For Each sKey In ExtractUniquePhrases(gameTextLine.text, 2, maxAbbreviationLen)
-                                    If Not sKey.Contains("@") Then ' TODO: Don't ignores all Inform escape-characters
+                                    If Not sKey.Contains(CChar("@")) Then ' TODO: Don't ignores all Inform escape-characters
                                         If Not patternDictionary.ContainsKey(sKey) Then
-                                            patternDictionary(sKey) = New patternData
-                                            patternDictionary(sKey).Cost = CalculateCost(sKey)
+                                            patternDictionary(sKey) = New PatternData With {.Cost = CalculateCost(sKey)}
                                         End If
                                         patternDictionary(sKey).Frequency += CountOccurrencesReplace(gameTextLine.text, sKey)
                                         patternDictionary(sKey).Key = sKey
@@ -293,24 +297,24 @@ Module Program
                 ' The ".GSTR", ".STRL", "PRINTI" and "PRINTR" Op-codes contains the text.
                 ' Every pattern is stored in a dictionary with the pattern as key.
                 For Each fileName As String In IO.Directory.GetFiles(gameDirectory)
-                    Dim startPos As Long = 0
+                    Dim startPos As Integer = 0
 
                     If IO.Path.GetExtension(fileName).ToUpper = ".ZAP" And Not fileName.Contains("_freq") Then
                         If gameFilename = "" OrElse IO.Path.GetFileName(fileName).Length < gameFilename.Length Then gameFilename = IO.Path.GetFileName(fileName)
 
-                        If textEncoding Is Nothing Then
+                        If TextEncoding Is Nothing Then
                             If IsFileUTF8(fileName) Then
-                                textEncoding = System.Text.Encoding.UTF8
+                                TextEncoding = System.Text.Encoding.UTF8
                             Else
-                                textEncoding = System.Text.Encoding.Latin1
+                                TextEncoding = System.Text.Encoding.Latin1
                             End If
 
                         End If
 
                         Dim byteText() As Byte = IO.File.ReadAllBytes(fileName)
 
-                        For i As Long = 5 To byteText.Length - 1
-                            Dim opCodeString As String = textEncoding.GetString(byteText, i - 5, 5).ToUpper
+                        For i As Integer = 5 To byteText.Length - 1
+                            Dim opCodeString As String = TextEncoding.GetString(byteText, i - 5, 5).ToUpper
                             If opCodeString = ".GSTR" Then
                                 searchFor34 = True
                                 packedAddress = True
@@ -363,13 +367,11 @@ Module Program
                                     Next
 
                                     ' Create dictionary. Replace two double-quotes with one (the first is an escape-char). 
-                                    Dim gameTextLine As New gameText(textEncoding.GetString(byteTemp).Replace(String.Concat(QUOTE_REPLACEMENT, QUOTE_REPLACEMENT), QUOTE_REPLACEMENT))
-                                    gameTextLine.packedAddress = packedAddress
+                                    Dim gameTextLine As New GameText(TextEncoding.GetString(byteTemp).Replace(String.Concat(QUOTE_REPLACEMENT, QUOTE_REPLACEMENT), QUOTE_REPLACEMENT)) With {.packedAddress = packedAddress}
                                     gameTextList.Add(gameTextLine)
                                     For Each sKey In ExtractUniquePhrases(gameTextLine.text, 2, maxAbbreviationLen)
                                         If Not patternDictionary.ContainsKey(sKey) Then
-                                            patternDictionary(sKey) = New patternData
-                                            patternDictionary(sKey).Cost = CalculateCost(sKey)
+                                            patternDictionary(sKey) = New PatternData With {.Cost = CalculateCost(sKey)}
                                         End If
                                         patternDictionary(sKey).Frequency += CountOccurrencesReplace(gameTextLine.text, sKey)
                                         patternDictionary(sKey).Key = sKey
@@ -397,7 +399,7 @@ Module Program
                 Exit Sub
             End If
 
-            Console.Error.WriteLine(String.Concat("Text encoding: ", textEncoding.BodyName, ", ", textEncoding.EncodingName))
+            Console.Error.WriteLine(String.Concat("Text encoding: ", TextEncoding.BodyName, ", ", TextEncoding.EncodingName))
 
             If customAlphabet Then
                 Dim charFreqList As List(Of KeyValuePair(Of Char, Integer)) =
@@ -409,18 +411,18 @@ Module Program
                     alphabet = String.Concat(alphabet, charFreqList(i).Key)
                 Next
                 A0 = SortAlphabet(alphabet.Substring(0, 26), defaultA0)
-                A1 = SortAlphabet(alphabet.Substring(26, 49), defaultA1 & defaultA2)
+                A1 = SortAlphabet(alphabet.Substring(26, 49), String.Concat(defaultA1, defaultA2))
                 A2 = A1.Substring(26)
                 A1 = A1.Substring(0, 26)
-                If printDebug Then Console.Error.WriteLine("Alphabet = " & Chr(34) & alphabet & Chr(34))
+                If printDebug Then Console.Error.WriteLine(String.Concat("Alphabet = ", Chr(34), alphabet, Chr(34)))
                 If inform6StyleText Then PrintAlphabetI6() Else PrintAlphabet()
             End If
 
             ' Add to a Max Heap
             startTime = Date.Now
             Console.Error.Write("Creating max heap...")
-            Dim maxHeap As New MoreComplexDataStructures.MaxHeap(Of patternData)
-            For Each KPD As KeyValuePair(Of String, patternData) In patternDictionary
+            Dim maxHeap As New MoreComplexDataStructures.MaxHeap(Of PatternData)
+            For Each KPD As KeyValuePair(Of String, PatternData) In patternDictionary
 
                 ' Recalculate cost if where using a newly defined custom alphabet
                 If customAlphabet Then KPD.Value.Cost = CalculateCost(KPD.Value.Key)
@@ -433,7 +435,7 @@ Module Program
             startTime = Date.Now
             Console.Error.Write("Searching for abbreviations with optimal parse...")
             If printDebug Then Console.Error.WriteLine()
-            Dim bestCandidateList As New List(Of patternData)
+            Dim bestCandidateList As New List(Of PatternData)
             Dim currentAbbrev As Integer = 0
             Dim previousSavings As Integer = 0
             Dim oversample As Integer = 0
@@ -444,7 +446,7 @@ Module Program
                 Dim deltaSavings As Integer = currentSavings - previousSavings
                 If deltaSavings < maxHeap.Peek.Savings Then
                     ' If delta savings is less than top of heap then remove current abbrev and reinsert it in heap with new score and try next from heap
-                    Dim KPD As patternData = bestCandidateList(currentAbbrev)
+                    Dim KPD As PatternData = bestCandidateList(currentAbbrev)
                     KPD.Savings = currentSavings - previousSavings
                     bestCandidateList.RemoveAt(currentAbbrev)
                     maxHeap.Insert(KPD)
@@ -473,19 +475,19 @@ Module Program
                     End If
                 End If
 
-            Loop Until currentAbbrev = (numberOfAbbrevs + oversample) Or maxHeap.Count = 0
+            Loop Until currentAbbrev = (NumberOfAbbrevs + oversample) Or maxHeap.Count = 0
             Console.Error.WriteLine(String.Concat(Now().AddTicks(-startTime.Ticks).ToString("m.ss.fff \s")))
 
             If printDebug Then
                 If inform6StyleText Then
-                    PrintAbbreviationsI6(AbbrevSort(bestCandidateList, False), gameFilename, True)
+                    PrintAbbreviationsI6(AbbrevSort(bestCandidateList, False), True)
                 Else
                     PrintAbbreviations(AbbrevSort(bestCandidateList, False), gameFilename, True)
                 End If
             End If
 
             ' Restore best candidate list to numberOfAbbrevs patterns
-            For i As Integer = (numberOfAbbrevs + oversample - 1) To numberOfAbbrevs Step -1
+            For i As Integer = (NumberOfAbbrevs + oversample - 1) To NumberOfAbbrevs Step -1
                 maxHeap.Insert(bestCandidateList(i))
                 bestCandidateList.RemoveAt(i)
             Next
@@ -507,7 +509,7 @@ Module Program
                     Next
                     Do While passes < 10000 And maxHeap.Count > 0
                         passes += 1
-                        Dim runnerup As patternData = maxHeap.ExtractMax
+                        Dim runnerup As PatternData = maxHeap.ExtractMax
                         'If runnerup.Savings < (minSavings \ 2) Then
                         '    Continue Do
                         'End If
@@ -519,7 +521,7 @@ Module Program
                                 runnerup.Key.EndsWith(bestCandidateList(i).Key) OrElse
                                 bestCandidateList(i).Key.StartsWith(runnerup.Key) OrElse
                                 bestCandidateList(i).Key.EndsWith(runnerup.Key) Then
-                                    Dim tempCandidate As patternData = bestCandidateList(i)
+                                    Dim tempCandidate As PatternData = bestCandidateList(i)
                                     bestCandidateList.Insert(i, runnerup)
                                     bestCandidateList.RemoveAt(i + 1)
                                     Dim currentSavings = RescoreOptimalParse(gameTextList, bestCandidateList, True, zversion)
@@ -541,7 +543,7 @@ Module Program
 
                     If pass = 0 And printDebug Then
                         If inform6StyleText Then
-                            PrintAbbreviationsI6(AbbrevSort(bestCandidateList, False), gameFilename, True)
+                            PrintAbbreviationsI6(AbbrevSort(bestCandidateList, False), True)
                         Else
                             PrintAbbreviations(AbbrevSort(bestCandidateList, False), gameFilename, True)
                         End If
@@ -625,7 +627,7 @@ Module Program
                     Console.Error.WriteLine(String.Concat(Now().AddTicks(-startTime.Ticks).ToString("m.ss.fff \s")))
                     If pass = 0 And printDebug Then
                         If inform6StyleText Then
-                            PrintAbbreviationsI6(AbbrevSort(bestCandidateList, False), gameFilename, True)
+                            PrintAbbreviationsI6(AbbrevSort(bestCandidateList, False), True)
                         Else
                             PrintAbbreviations(AbbrevSort(bestCandidateList, False), gameFilename, True)
                         End If
@@ -635,14 +637,14 @@ Module Program
 
             ' Print result
             If inform6StyleText Then
-                PrintAbbreviationsI6(AbbrevSort(bestCandidateList, False), gameFilename, False)
+                PrintAbbreviationsI6(AbbrevSort(bestCandidateList, False), False)
             Else
                 PrintAbbreviations(AbbrevSort(bestCandidateList, False), gameFilename, False)
             End If
             RescoreOptimalParse(gameTextList, bestCandidateList, False, zversion)
             totalSavings = 0
             Dim maxAbbrevs As Integer = bestCandidateList.Count - 1
-            If maxAbbrevs >= numberOfAbbrevs Then maxAbbrevs = numberOfAbbrevs - 1
+            If maxAbbrevs >= NumberOfAbbrevs Then maxAbbrevs = NumberOfAbbrevs - 1
             For i As Integer = 0 To maxAbbrevs
                 totalSavings += bestCandidateList(i).Savings
             Next
@@ -653,14 +655,14 @@ Module Program
         End Try
     End Sub
 
-    Public Class gameText
+    Public Class GameText
         Public Sub New(value As String)
             Me.text = value
         End Sub
 
         Public text As String = ""
         Private _textSB As Text.StringBuilder
-        Public ReadOnly Property textSB As Text.StringBuilder
+        Public ReadOnly Property TextSB As Text.StringBuilder
             Get
                 If _textSB Is Nothing Then
                     _textSB = New Text.StringBuilder(Me.text)
@@ -671,8 +673,8 @@ Module Program
 
         Public packedAddress As Boolean = False
     End Class
-    Public Class patternData
-        Implements IComparable(Of patternData)
+    Public Class PatternData
+        Implements IComparable(Of PatternData)
 
         Public Key As String = ""
         Public Frequency As Integer = 0
@@ -691,11 +693,11 @@ Module Program
             End Get
         End Property
 
-        Public Function Clone() As patternData
-            Return DirectCast(Me.MemberwiseClone(), patternData)
+        Public Function Clone() As PatternData
+            Return DirectCast(Me.MemberwiseClone(), PatternData)
         End Function
 
-        Public Function CompareTo(other As patternData) As Integer Implements IComparable(Of patternData).CompareTo
+        Public Function CompareTo(other As PatternData) As Integer Implements IComparable(Of PatternData).CompareTo
             ' Here we compare this instance with other.
             ' If this is supposed to come before other once sorted then
             ' we should return a negative number.
@@ -707,12 +709,12 @@ Module Program
         End Function
     End Class
 
-    Private Function ASCII(cChr As Char) As Integer
-        Return textEncoding.GetBytes(cChr)(0)
+    Private Function ASCII(cChr As Char) As Byte
+        Return TextEncoding.GetBytes(cChr)(0)
     End Function
 
     Private Function CalculateCost(sText As String) As Integer
-        Dim cCurrent As Char = ""
+        Dim cCurrent As Char
 
         Dim iCost As Integer = 0
         For i As Integer = 0 To sText.Length - 1
@@ -735,7 +737,7 @@ Module Program
         Return iCost
     End Function
 
-    Private Function zcharCost(zchar As Char) As Integer
+    Private Function ZcharCost(zchar As Char) As Integer
         If A0.Contains(zchar, StringComparison.Ordinal) OrElse zchar = SPACE_REPLACEMENT Then
             ' Alphabet A0 and space
             Return 1
@@ -765,7 +767,7 @@ Module Program
         ' Add single characters that have a high charCost (not in A0-A2 alphabet)
         For i As Integer = 0 To textLine.Length - 1
             Dim pattern As String = textLine.Substring(i, 1)
-            If zcharCost(pattern) > 3 Then patternList.Add(pattern)
+            If ZcharCost(CChar(pattern)) > 3 Then patternList.Add(pattern)
         Next
 
         Return patternList.Distinct.ToList
@@ -780,19 +782,19 @@ Module Program
         End Try
     End Function
 
-    Private Function RescoreOptimalParse(textList As List(Of gameText), abbrevs As List(Of patternData), calculateRoundingPenalty As Boolean, zversion As Integer) As Integer
+    Private Function RescoreOptimalParse(textList As List(Of GameText), abbrevs As List(Of PatternData), calculateRoundingPenalty As Boolean, zversion As Integer) As Integer
         ' Parse string using Wagner's optimal parse
 
         ' Clear frequency from abbrevs
-        For Each abbrev As patternData In abbrevs
+        For Each abbrev As PatternData In abbrevs
             abbrev.Frequency = 0
         Next
 
         Dim roundingPenalty As Integer = 0
 
         ' Iterate over each string and pick optimal set of abbreviations From abbrevs for this string
-        For Each gameTextLine As gameText In textList
-            Dim sb As Text.StringBuilder = gameTextLine.textSB
+        For Each gameTextLine As GameText In textList
+            Dim sb As Text.StringBuilder = gameTextLine.TextSB
             Dim textLine As String = gameTextLine.text
 
             Dim abbrLocs = New List(Of List(Of Integer))
@@ -813,7 +815,7 @@ Module Program
             minRemainingCost(sb.Length) = 0
             Const abbrRefCost As Integer = 2 ' An abbreviation reference Is 2 characters, always.
             For idx As Integer = sb.Length - 1 To 0 Step -1
-                Dim charCost As Integer = zcharCost(sb.Chars(idx))
+                Dim charCost As Integer = ZcharCost(sb.Chars(idx))
                 minRemainingCost(idx) = minRemainingCost(idx + 1) + charCost
                 chosenAbbr(idx) = -1
                 For Each abbrNo As Integer In abbrLocs(idx)
@@ -843,7 +845,7 @@ Module Program
         Next
 
         Dim totalSavings As Integer = 0
-        For Each abbrev As patternData In abbrevs
+        For Each abbrev As PatternData In abbrevs
             abbrev.Savings = abbrev.Score
             totalSavings += abbrev.Savings
         Next
@@ -851,27 +853,27 @@ Module Program
         Return totalSavings + roundingPenalty
     End Function
 
-    Private Function AbbrevSort(abbrevList As List(Of patternData), sortBottomOfList As Boolean) As List(Of patternData)
-        Dim returnList As New List(Of patternData)
-        For i As Integer = 0 To numberOfAbbrevs - 1
+    Private Function AbbrevSort(abbrevList As List(Of PatternData), sortBottomOfList As Boolean) As List(Of PatternData)
+        Dim returnList As New List(Of PatternData)
+        For i As Integer = 0 To NumberOfAbbrevs - 1
             returnList.Add(abbrevList(i).Clone)
         Next
 
         If sortBottomOfList Then
-            Dim tmpList As New List(Of patternData)
-            For i As Integer = numberOfAbbrevs To abbrevList.Count - 1
+            Dim tmpList As New List(Of PatternData)
+            For i As Integer = NumberOfAbbrevs To abbrevList.Count - 1
                 If abbrevList(i).Score > 0 Then tmpList.Add(abbrevList(i).Clone)
             Next
-            tmpList.Sort(Function(firstPair As patternData, nextPair As patternData) CInt(firstPair.Score).CompareTo(CInt(nextPair.Score)))
+            tmpList.Sort(Function(firstPair As PatternData, nextPair As PatternData) CInt(firstPair.Score).CompareTo(CInt(nextPair.Score)))
             tmpList.Reverse()
             For i As Integer = 0 To tmpList.Count - 1
                 returnList.Add(tmpList(i).Clone)
             Next
         Else
-            returnList.Sort(Function(firstPair As patternData, nextPair As patternData) CInt(firstPair.Key.Length).CompareTo(CInt(nextPair.Key.Length)))
+            returnList.Sort(Function(firstPair As PatternData, nextPair As PatternData) CInt(firstPair.Key.Length).CompareTo(CInt(nextPair.Key.Length)))
             returnList.Reverse()
 
-            For i As Integer = numberOfAbbrevs To abbrevList.Count - 1
+            For i As Integer = NumberOfAbbrevs To abbrevList.Count - 1
                 returnList.Add(abbrevList(i).Clone)
             Next
         End If
@@ -879,24 +881,24 @@ Module Program
         Return returnList
     End Function
 
-    Private Function PrintFormattedAbbreviation(abbreviationNo As Integer, abbreviation As String, frequency As Integer, score As Integer)
+    Private Function PrintFormattedAbbreviation(abbreviationNo As Integer, abbreviation As String, frequency As Integer, score As Integer) As String
         Dim padExtra As Integer = 0
         If abbreviationNo < 10 Then padExtra = 1
         Return String.Concat("        .FSTR FSTR?", abbreviationNo.ToString, ",", FormatAbbreviation(abbreviation).PadRight(20 + padExtra), "; ", frequency.ToString.PadLeft(4), "x, saved ", score)
     End Function
 
-    Private Function FormatAbbreviation(abbreviation As String)
+    Private Function FormatAbbreviation(abbreviation As String) As String
         Return String.Concat(Chr(34), abbreviation.Replace(SPACE_REPLACEMENT, " ").Replace(QUOTE_REPLACEMENT, String.Concat(Chr(34), Chr(34))).Replace(LF_REPLACEMENT, vbLf), Chr(34))
     End Function
 
-    Private Sub PrintAbbreviations(abbrevList As List(Of patternData), gameFilename As String, toError As Boolean)
+    Private Sub PrintAbbreviations(abbrevList As List(Of PatternData), gameFilename As String, toError As Boolean)
         Dim outStream As IO.TextWriter = Console.Out
         If toError Then outStream = Console.Error
 
         outStream.WriteLine("        ; Frequent words file for {0}", gameFilename)
         outStream.WriteLine()
 
-        Dim max As Integer = numberOfAbbrevs - 1
+        Dim max As Integer = NumberOfAbbrevs - 1
         If abbrevList.Count < max + 1 Then max = abbrevList.Count - 1
         For i As Integer = 0 To max
             outStream.WriteLine(String.Concat(PrintFormattedAbbreviation(i + 1, abbrevList(i).Key, abbrevList(i).Frequency, abbrevList(i).Score)))
@@ -912,11 +914,11 @@ Module Program
         outStream.WriteLine("        .ENDI")
     End Sub
 
-    Private Sub PrintAbbreviationsI6(abbrevList As List(Of patternData), gameFilename As String, toError As Boolean)
+    Private Sub PrintAbbreviationsI6(abbrevList As List(Of PatternData), toError As Boolean)
         Dim outStream As IO.TextWriter = Console.Out
         If toError Then outStream = Console.Error
 
-        Dim max As Integer = numberOfAbbrevs - 1
+        Dim max As Integer = NumberOfAbbrevs - 1
         If abbrevList.Count < max + 1 Then max = abbrevList.Count - 1
         For i As Integer = 0 To max
             Dim line As String = abbrevList(i).Key
@@ -933,7 +935,7 @@ Module Program
         Dim fileBytes() As Byte = IO.File.ReadAllBytes(fileName)
         Dim decoderUTF8 = System.Text.Encoding.UTF8.GetDecoder
         decoderUTF8.Fallback = FallbackExp
-        Dim IsUTF8 As Boolean = False
+        Dim IsUTF8 As Boolean
         Try
             Dim charCount As Integer = decoderUTF8.GetCharCount(fileBytes, 0, fileBytes.Length)
             IsUTF8 = True
@@ -946,18 +948,18 @@ Module Program
 
     Private Function SortAlphabet(alphabetIn As String, AlphabetOrg As String) As String
         Dim alphaArray(AlphabetOrg.Length - 1) As Char
-        For i As Integer = 0 To alphaArray.Count - 1
+        For i As Integer = 0 To alphaArray.Length - 1
             If alphabetIn.Contains(AlphabetOrg.Substring(i, 1), StringComparison.Ordinal) Then
-                alphaArray(i) = AlphabetOrg.Substring(i, 1)
+                alphaArray(i) = CChar(AlphabetOrg.Substring(i, 1))
             Else
-                alphaArray(i) = " "
+                alphaArray(i) = CChar(" ")
             End If
         Next
-        For i As Integer = 0 To alphaArray.Count - 1
+        For i As Integer = 0 To alphaArray.Length - 1
             If Not New String(alphaArray).Contains(alphabetIn.Substring(i, 1), StringComparison.Ordinal) Then
-                For j As Integer = 0 To alphaArray.Count - 1
+                For j As Integer = 0 To alphaArray.Length - 1
                     If alphaArray(j) = " " Then
-                        alphaArray(j) = alphabetIn.Substring(i, 1)
+                        alphaArray(j) = CChar(alphabetIn.Substring(i, 1))
                         Exit For
                     End If
                 Next
