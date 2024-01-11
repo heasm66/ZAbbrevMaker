@@ -3,8 +3,8 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <RootNamespace>ZAbbrevMaker</RootNamespace>
-    <TargetFramework>net7.0</TargetFramework>
-    <Version>0.9.0</Version>
+    <TargetFramework>net8.0</TargetFramework>
+    <Version>0.10.0</Version>
     <Authors>Henrik Åsman</Authors>
     <Company />
     <Copyright>Copyright 2021, 2023 Henrik Åsman</Copyright>
@@ -12,9 +12,5 @@
     <AnalysisLevel>latest</AnalysisLevel>
     <OptionStrict>On</OptionStrict>
   </PropertyGroup>
-
-  <ItemGroup>
-    <PackageReference Include="MoreComplexDataStructures" Version="1.9.1" />
-  </ItemGroup>
 
 </Project>
